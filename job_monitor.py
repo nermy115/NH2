@@ -4,88 +4,91 @@ from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import smtplib
+import time
 
-# Configuration
 EMAIL = os.environ["EMAIL"]
 APP_PASSWORD = os.environ["APP_PASSWORD"]
-URL = "https://www.healthjobsuk.com/job_list?JobSearch_re=MedicalAndDental&_sort=newest&_pg=1"
+BASE_URL = "https://www.jobs.nhs.uk/candidate/search/results"
 
 def load_previous_job_ids():
     try:
         with open("jobs.txt", "r") as f:
-            return f.read().splitlines()
+            return set(f.read().splitlines())
     except FileNotFoundError:
-        return []
+        return set()
 
 def save_current_job_ids(job_ids):
     with open("jobs.txt", "w") as f:
         f.write("\n".join(job_ids))
 
-def scrape_jobs():
+def scrape_all_pages():
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.5"
     }
-    response = requests.get(URL, headers=headers)
-    soup = BeautifulSoup(response.content, 'html.parser')
     
     jobs = []
-    job_listings = soup.find_all('li', class_=lambda x: x and x.startswith('hj-job'))
+    page = 1
     
-    for job_li in job_listings:
-        link_tag = job_li.find('a')
-        if not link_tag:
-            continue
-            
-        href = link_tag.get('href', '')
-        job_id = href.split('/')[-1].split('?')[0]
-        title_div = link_tag.find('div', class_='hj-jobtitle')
-        title = title_div.text.strip() if title_div else "Untitled Position"
+    while True:
+        params = {
+            "staffGroup": "MEDICAL_AND_DENTAL",
+            "payRange": "0-10,10-20,20-30,30-40,40-50,50-60",
+            "searchFormType": "sortBy",
+            "sort": "publicationDateDesc",
+            "language": "en",
+            "page": page
+        }
+
+        response = requests.get(BASE_URL, headers=headers, params=params)
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        jobs.append({
-            "ID": job_id,
-            "Title": title,
-            "Link": f"https://www.healthjobsuk.com{href}"
-        })
-    
+        # Save debug file
+        with open(f"debug_page_{page}.html", "w", encoding="utf-8") as f:
+            f.write(response.text)
+        
+        job_listings = soup.select('li.nhsuk-list-panel.search-result[data-test="search-result"]')
+        
+        if not job_listings:
+            print(f"⏹️ No jobs found on page {page}, stopping pagination")
+            break
+
+        for job in job_listings:
+            title_link = job.select_one('h2.nhsuk-heading-m a[data-test="search-result-job-title"]')
+            if not title_link:
+                continue
+
+            href = title_link['href']
+            job_id = href.split('/')[-1].split('?')[0]  # Extract ID from URL
+            title = title_link.get_text(strip=True)
+            
+            jobs.append({
+                "ID": job_id,
+                "Title": title,
+                "Link": f"https://www.jobs.nhs.uk{href}"
+            })
+
+        print(f"✅ Found {len(job_listings)} jobs on page {page}")
+        page += 1
+        time.sleep(1)  # Avoid rate limiting
+
     return jobs
 
 def send_email(new_jobs):
-    try:
-        msg = MIMEMultipart()
-        msg['Subject'] = f"New NHS Jobs: {len(new_jobs)}"
-        msg['From'] = EMAIL
-        msg['To'] = EMAIL
-
-        body = "🚨 New Job Alerts:\n\n"
-        for job in new_jobs:
-            body += f"▸ {job['Title']}\n{job['Link']}\n\n"
-        body += "Cheers,\nYour Job Monitor 🤖"
-
-        msg.attach(MIMEText(body, 'plain'))
-        
-        # Gmail SMTP configuration
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
-            server.login(EMAIL, APP_PASSWORD)
-            server.send_message(msg)
-            print("✅ Email notification sent!")
-    
-    except Exception as e:
-        print(f"❌ Failed to send email: {str(e)}")
-        raise
+    # ... keep existing send_email function unchanged ...
 
 def monitor():
-    previous_job_ids = load_previous_job_ids()
-    current_jobs = scrape_jobs()
-    current_ids = [job["ID"] for job in current_jobs]
+    previous_ids = load_previous_job_ids()
+    current_jobs = scrape_all_pages()
+    current_ids = {job["ID"] for job in current_jobs}
     
-    new_jobs = [job for job in current_jobs if job["ID"] not in previous_job_ids]
+    new_jobs = [job for job in current_jobs if job["ID"] not in previous_ids]
     
     if new_jobs:
-        print(f"Found {len(new_jobs)} new positions")
+        print(f"🎉 Found {len(new_jobs)} NEW positions!")
         send_email(new_jobs)
     else:
-        print("No new jobs detected")
+        print("👀 No new jobs detected")
     
     save_current_job_ids(current_ids)
 
