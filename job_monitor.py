@@ -8,7 +8,7 @@ import time
 
 EMAIL = os.environ["EMAIL"]
 APP_PASSWORD = os.environ["APP_PASSWORD"]
-BASE_URL = "https://www.jobs.nhs.uk/candidate/search/results"
+BASE_URL = "https://www.jobs.nhs.uk/candidate/search/results?staffGroup=MEDICAL_AND_DENTAL&payRange=0-10%2C10-20%2C20-30%2C30-40%2C40-50%2C50-60&searchFormType=sortBy&sort=publicationDateDesc&language=en"  # Direct link to your preferred search
 
 def load_previous_job_ids():
     try:
@@ -31,16 +31,10 @@ def scrape_all_pages():
     page = 1
     
     while True:
-        params = {
-            "staffGroup": "MEDICAL_AND_DENTAL",
-            "payRange": "0-10,10-20,20-30,30-40,40-50,50-60",
-            "searchFormType": "sortBy",
-            "sort": "publicationDateDesc",
-            "language": "en",
-            "page": page
-        }
-
-        response = requests.get(BASE_URL, headers=headers, params=params)
+        # Use the same base URL with pre-set parameters
+        url = f"{BASE_URL}&page={page}"
+        
+        response = requests.get(url, headers=headers)
         soup = BeautifulSoup(response.text, 'html.parser')
         
         # Save debug file
@@ -59,7 +53,7 @@ def scrape_all_pages():
                 continue
 
             href = title_link['href']
-            job_id = href.split('/')[-1].split('?')[0]  # Extract ID from URL
+            job_id = href.split('/')[-1].split('?')[0]
             title = title_link.get_text(strip=True)
             
             jobs.append({
