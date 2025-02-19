@@ -2,7 +2,7 @@ name: Job Scraper
 
 on:
   schedule:
-    - cron: "*/10 * * * *"  # Every 10 minutes (UTC)
+    - cron: "*/5 8-17 * * 1-5"  # Every 5 minutes from 8AM-5PM UTC, Mon-Fri
   workflow_dispatch:
 
 jobs:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          persist-credentials: false  # Critical for git push
+          persist-credentials: false
 
       - name: Install Python
         uses: actions/setup-python@v4
@@ -26,18 +26,23 @@ jobs:
         env:
           EMAIL: ${{ secrets.EMAIL }}
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
-        run: python job_monitor.py
+        run: python job_monitor.py || echo "Script failed but proceeding..."
+
+      - name: Upload Debug Files
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nhs-jobs-debug
+          path: debug_page_*.html
 
       - name: Commit new job IDs
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           
-          # Check if jobs.txt exists
           if [ -f "jobs.txt" ]; then
             git add jobs.txt
-            git commit -m "Update tracked job IDs" || echo "No changes to commit"
-            # Push using GITHUB_TOKEN
+            git commit -m "Update tracked job IDs" || echo "No changes"
             git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
             git push origin HEAD:${{ github.ref }}
           else
