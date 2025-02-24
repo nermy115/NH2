@@ -70,7 +70,7 @@ def send_email(new_jobs):  # <--- NEXT FUNCTION STARTS AT SAME INDENT LEVEL
         msg = MIMEMultipart()
         msg['Subject'] = f"New NHS Jobs: {len(new_jobs)}"
         msg['From'] = EMAIL
-        msg['To'] = EMAIL
+        msg['To'] = nermeen1899@hotmail.com
 
         body = "🚨 New Job Alerts:\n\n"
         for job in new_jobs:
